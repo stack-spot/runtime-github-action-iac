@@ -13,6 +13,10 @@ inputs:
   CLIENT_REALM:
     description: "CLIENT REALM"
     required: true
+  REPOSITORY_NAME:
+    description: "Git Repository Name"
+    required: true
+    default: ${{ github.event.repository.name }}
   AWS_ACCESS_KEY_ID:
     description: "AWS ACCESS KEY ID from console"
     required: false
@@ -31,15 +35,28 @@ inputs:
   RUN_TASK_ID:
     description: "Runtime Run Task Id"
     required: true
+  PATH_TO_MOUNT:
+    description: "Path to mount inside the docker"
+    required: true
+    default: ${{ github.workspace }}
   BASE_PATH_OUTPUT:
     description: "Base Path Output"
     required: false
   CONTAINER_URL:
     description: "IAC Container url"
     default: stackspot/runtime-job-iac:latest
+  CHECKOUT_BRANCH:
+    description: "Whether or not checkout is enabled."
+    required: false
+    default: 'false'
+
 runs:
   using: "composite"
   steps:
+      - name: Checkout
+      if: inputs.CHECKOUT_BRANCH != 'false'
+       uses: actions/checkout@v4
+
     - name: Check Runner
       run: echo 🤖 OS runner is $(uname)
       shell: bash
@@ -54,37 +71,31 @@ runs:
         output-credentials: true
       
     - name: Run Runtime Action Iac
-      if: ${{ inputs.AWS_ROLE_ARN == 0 }}
       run: |
-        docker run --rm \
+        FLAGS=$(echo "-v ${{ inputs.PATH_TO_MOUNT }}:/app-volume  \
         -e FEATURES_LEVEL_LOG=${{ inputs.FEATURES_LEVEL_LOG }} \
         -e AUTHENTICATE_CLIENT_ID=${{ inputs.CLIENT_ID }} \
         -e AUTHENTICATE_CLIENT_SECRET=${{ inputs.CLIENT_KEY }} \
         -e AUTHENTICATE_CLIENT_REALMS=${{ inputs.CLIENT_REALM }} \
         -e AUTHENTICATE_URL="https://idm.stackspot.com" \
         -e FEATURES_API_MANAGER="https://runtime-manager.v1.stackspot.com" \
-        -e AWS_ACCESS_KEY_ID=${{ inputs.AWS_ACCESS_KEY_ID }} \
-        -e AWS_SECRET_ACCESS_KEY=${{ inputs.AWS_SECRET_ACCESS_KEY }} \
-        -e AWS_SESSION_TOKEN=${{ inputs.AWS_SESSION_TOKEN }} \
+        -e REPOSITORY_NAME=${{ inputs.REPOSITORY_NAME }} \
         -e AWS_REGION=${{ inputs.AWS_REGION }} \
-        --entrypoint=/app/stackspot-runtime-job-iac \
-        ${{ inputs.CONTAINER_URL }} start --run-task-id="${{ inputs.RUN_TASK_ID }}" --base-path-output="${{ inputs.BASE_PATH_OUTPUT }}"
-      shell: bash
 
-    - name: Run Runtime Action Iac
-      if: ${{ inputs.AWS_ROLE_ARN != 0 }}
-      run: |
+        if [ -z "${{ inputs.AWS_ROLE_ARN }}" ]; then
+          FLAGS=$(echo "$FLAGS -e AWS_ACCESS_KEY_ID=${{ inputs.AWS_ACCESS_KEY_ID }}")
+          FLAGS=$(echo "$FLAGS -e AWS_SECRET_ACCESS_KEY=${{ inputs.AWS_SECRET_ACCESS_KEY }}")
+          FLAGS=$(echo "$FLAGS -e AWS_SESSION_TOKEN=${{ inputs.AWS_SESSION_TOKEN }}")
+        fi
+
+        if [ ! -z "${{ inputs.AWS_ROLE_ARN }}" ]; then
+          FLAGS=$(echo "$FLAGS -e AWS_ACCESS_KEY_ID=${{ steps.aws-cred.outputs.aws-access-key-id }}")
+          FLAGS=$(echo "$FLAGS -e AWS_SECRET_ACCESS_KEY=${{ steps.aws-cred.outputs.aws-secret-access-key }}")
+          FLAGS=$(echo "$FLAGS -e AWS_SESSION_TOKEN=${{ steps.aws-cred.outputs.aws-session-token }}")
+        fi
+
         docker run --rm \
-        -e FEATURES_LEVEL_LOG=${{ inputs.FEATURES_LEVEL_LOG }} \
-        -e AUTHENTICATE_CLIENT_ID=${{ inputs.CLIENT_ID }} \
-        -e AUTHENTICATE_CLIENT_SECRET=${{ inputs.CLIENT_KEY }} \
-        -e AUTHENTICATE_CLIENT_REALMS=${{ inputs.CLIENT_REALM }} \
-        -e AUTHENTICATE_URL="https://idm.stackspot.com" \
-        -e FEATURES_API_MANAGER="https://runtime-manager.v1.stackspot.com" \
-        -e AWS_ACCESS_KEY_ID=${{ steps.aws-cred.outputs.aws-access-key-id }} \
-        -e AWS_SECRET_ACCESS_KEY=${{ steps.aws-cred.outputs.aws-secret-access-key }} \
-        -e AWS_SESSION_TOKEN=${{ steps.aws-cred.outputs.aws-session-token }} \
-        -e AWS_REGION=${{ inputs.AWS_REGION }} \
+        $FLAGS \
         --entrypoint=/app/stackspot-runtime-job-iac \
         ${{ inputs.CONTAINER_URL }} start --run-task-id="${{ inputs.RUN_TASK_ID }}" --base-path-output="${{ inputs.BASE_PATH_OUTPUT }}"
       shell: bash
