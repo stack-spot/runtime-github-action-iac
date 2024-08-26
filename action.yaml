@@ -16,6 +16,7 @@ inputs:
   REPOSITORY_NAME:
     description: "Git Repository Name"
     required: true
+    default: ${{ github.event.repository.name }}
   AWS_ACCESS_KEY_ID:
     description: "AWS ACCESS KEY ID from console"
     required: false
