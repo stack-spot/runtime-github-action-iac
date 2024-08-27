@@ -54,9 +54,9 @@ inputs:
 runs:
   using: "composite"
   steps:
-      - name: Checkout
+    - name: Checkout
       if: inputs.CHECKOUT_BRANCH != 'false'
-       uses: actions/checkout@v4
+      uses: actions/checkout@v4
 
     - name: Check Runner
       run: echo 🤖 OS runner is $(uname)
